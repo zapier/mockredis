@@ -309,3 +309,8 @@ class TestRedisString(object):
         for x in range(16, 32, 2):
             eq_(0, self.redis.setbit("setbit_key", x, 1))
         eq_(b"\xaa\xaa\xaa\xaa", self.redis.get("setbit_key"))
+
+    def test_decode_responses(self):
+        self.redis.decode_responses = True
+        self.redis.set('key', 'value')
+        eq_(self.redis.get('key'), 'value')

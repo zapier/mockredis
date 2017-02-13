@@ -40,6 +40,7 @@ class MockRedis(object):
                  load_lua_dependencies=True,
                  blocking_timeout=1000,
                  blocking_sleep_interval=0.01,
+                 decode_responses=False,
                  **kwargs):
         """
         Initialize as either StrictRedis or Redis.
@@ -51,6 +52,7 @@ class MockRedis(object):
         self.load_lua_dependencies = load_lua_dependencies
         self.blocking_timeout = blocking_timeout
         self.blocking_sleep_interval = blocking_sleep_interval
+        self.decode_responses = decode_responses
         # The 'Redis' store
         self.redis = defaultdict(dict)
         self.redis_config = defaultdict(dict)
@@ -294,7 +296,10 @@ class MockRedis(object):
 
     def get(self, key):
         key = self._encode(key)
-        return self.redis.get(key)
+        value = self.redis.get(key)
+        if self.decode_responses and isinstance(value, bytes):
+            value = value.decode()
+        return value
 
     def __getitem__(self, name):
         """
