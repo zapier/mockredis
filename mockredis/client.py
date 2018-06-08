@@ -297,9 +297,7 @@ class MockRedis(object):
     def get(self, key):
         key = self._encode(key)
         value = self.redis.get(key)
-        if self.decode_responses and isinstance(value, bytes):
-            value = value.decode()
-        return value
+        return self._decode(value)
 
     def __getitem__(self, name):
         """
@@ -512,13 +510,13 @@ class MockRedis(object):
         """Emulate hget."""
 
         redis_hash = self._get_hash(hashkey, 'HGET')
-        return redis_hash.get(self._encode(attribute))
+        return self._decode(redis_hash.get(self._encode(attribute)))
 
     def hgetall(self, hashkey):
         """Emulate hgetall."""
 
         redis_hash = self._get_hash(hashkey, 'HGETALL')
-        return dict(redis_hash)
+        return {self._decode(key): self._decode(value) for key, value in redis_hash.items()}
 
     def hdel(self, hashkey, *keys):
         """Emulate hdel"""
@@ -553,7 +551,10 @@ class MockRedis(object):
 
         redis_hash = self._get_hash(hashkey, 'HMGET')
         attributes = self._list_or_args(keys, args)
-        return [redis_hash.get(self._encode(attribute)) for attribute in attributes]
+        return [
+            self._decode(redis_hash.get(self._encode(attribute)))
+            for attribute in attributes
+        ]
 
     def hset(self, hashkey, attribute, value):
         """Emulate hset."""
@@ -611,7 +612,9 @@ class MockRedis(object):
         """Emulate lrange."""
         redis_list = self._get_list(key, 'LRANGE')
         start, stop = self._translate_range(len(redis_list), start, stop)
-        return redis_list[start:stop + 1]
+        return [
+            self._decode(elem) for elem in redis_list[start:stop + 1]
+        ]
 
     def lindex(self, key, index):
         """Emulate lindex."""
@@ -662,7 +665,7 @@ class MockRedis(object):
         for key in keys:
             val = pop_func(key)
             if val:
-                return self._encode(key), val
+                return self._encode(key), self._decode(val)
         return None, None
 
     def blpop(self, keys, timeout=0):
@@ -684,7 +687,7 @@ class MockRedis(object):
             value = redis_list.pop(0)
             if len(redis_list) == 0:
                 self.delete(key)
-            return value
+            return self._decode(value)
         except (IndexError):
             # Redis returns nil if popping from an empty list
             return None
@@ -713,7 +716,7 @@ class MockRedis(object):
             value = redis_list.pop()
             if len(redis_list) == 0:
                 self.delete(key)
-            return value
+            return self._decode(value)
         except (IndexError):
             # Redis returns nil if popping from an empty list
             return None
@@ -898,7 +901,7 @@ class MockRedis(object):
         else:
             result_cursor = cursor + count
 
-        values = values[cursor:cursor+count]
+        values = [self._decode(value) for value in values[cursor:cursor+count]]
 
         if match is not None:
             regex = re.compile(b'^' + re.escape(self._encode(match)).replace(b'\\*', b'.*') + b'$')
@@ -1168,7 +1171,7 @@ class MockRedis(object):
         start, end = self._translate_range(len(zset), start, end)
 
         func = self._range_func(withscores, score_cast_func)
-        return [func(item) for item in zset.range(start, end, desc)]
+        return [self._decode(func(item)) for item in zset.range(start, end, desc)]
 
     def zrangebyscore(self, name, min, max, start=None, num=None,
                       withscores=False, score_cast_func=float):
@@ -1187,7 +1190,7 @@ class MockRedis(object):
         if start is not None and num is not None:
             start, num = self._translate_limit(len(scorerange), int(start), int(num))
             scorerange = scorerange[start:start + num]
-        return [func(item) for item in scorerange]
+        return [self._decode(func(item)) for item in scorerange]
 
     def zrank(self, name, value):
         zset = self._get_zset(name, "ZRANK")
@@ -1262,7 +1265,7 @@ class MockRedis(object):
         if start is not None and num is not None:
             start, num = self._translate_limit(len(scorerange), int(start), int(num))
             scorerange = scorerange[start:start + num]
-        return [func(item) for item in scorerange]
+        return [self._decode(func(item)) for item in scorerange]
 
     def zrevrank(self, name, value):
         zset = self._get_zset(name, "ZREVRANK")
@@ -1559,6 +1562,12 @@ class MockRedis(object):
             value = str(value).encode('utf-8')
         else:
             value = value.encode('utf-8', 'strict')
+        return value
+
+    def _decode(self, value, force=False):
+        "Return a unicode string from the byte representation"
+        if (self.decode_responses or force) and isinstance(value, bytes):
+            value = value.decode('utf-8', 'strict')
         return value
 
 
